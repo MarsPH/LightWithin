@@ -1,7 +1,10 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-
+/// <summary>
+///   Revision History
+///   Mahan Poor Hamidian   2025/1/11   Created PlayerCamera Script
+/// </summary>
 public class PlayerCamera : MonoBehaviour
 {
     [SerializeField] private float _defaultDistance = 6f,
@@ -12,8 +15,10 @@ public class PlayerCamera : MonoBehaviour
         _rotationSpeed = 10f,
         _rotationSharpness = 10000f,
         _followSharpness = 10000f,
-        _minVerticalAngle = -90f,
-        _maxVerticalAngle = 90f,
+        _minVerticalAngle = -30f,
+        _maxVerticalAngle = 60f,
+        _minHorizontalAngle = -70f,
+        _maxHorizontalAngle = 70f,
         _defaultVerticalAngle = 20f;
     
     private Transform _followTransform;
@@ -41,20 +46,41 @@ public class PlayerCamera : MonoBehaviour
     {
         _defaultDistance = Mathf.Clamp(_defaultDistance, _minDistance, _maxDistance);
         _defaultVerticalAngle = Mathf.Clamp(_defaultVerticalAngle, _minVerticalAngle, _maxVerticalAngle);
-    }
 
+        // Clamp values to prevent backward rotation
+        _minVerticalAngle = Mathf.Clamp(_minVerticalAngle, -30f, 0f); // Adjust to your needs
+        _maxVerticalAngle = Mathf.Clamp(_maxVerticalAngle, 0f, 60f);  // Adjust to your needs
+    
+    }
+    
+    private bool _isMovingBackward; // Add this to store the backward movement state
+
+    public void SetIsMovingBackward(bool isMovingBackward)
+    {
+        _isMovingBackward = isMovingBackward;
+    }
+    
     private void HandleRotationInput(float deltaTime, Vector3 rotationInput, out Quaternion targetRotation)
     {
-        Quaternion rotationFromInput = Quaternion.Euler(_followTransform.up * (rotationInput.x * _rotationSpeed));
-        _planarDirection = rotationFromInput * _planarDirection;
-        Quaternion planarRot = Quaternion.LookRotation(_planarDirection, _followTransform.up); 
-        
-        _targetVerticalAngle -= (rotationInput.y * _rotationSpeed);
+        float horizontalAngle = Vector3.SignedAngle(_followTransform.forward, _planarDirection, Vector3.up);
+
+        // Ignore rotation input when moving backward
+        if (!_isMovingBackward)
+        {
+            horizontalAngle += rotationInput.x * _rotationSpeed;
+        }
+
+        horizontalAngle = Mathf.Clamp(horizontalAngle, _minHorizontalAngle, _maxHorizontalAngle);
+
+        _planarDirection = Quaternion.Euler(0f, horizontalAngle, 0f) * _followTransform.forward;
+
+        _targetVerticalAngle -= rotationInput.y * _rotationSpeed;
         _targetVerticalAngle = Mathf.Clamp(_targetVerticalAngle, _minVerticalAngle, _maxVerticalAngle);
+
+        Quaternion planarRot = Quaternion.LookRotation(_planarDirection, Vector3.up);
         Quaternion verticalRot = Quaternion.Euler(_targetVerticalAngle, 0f, 0f);
-        
+
         targetRotation = Quaternion.Slerp(transform.rotation, planarRot * verticalRot, _rotationSharpness * deltaTime);
-        
         transform.rotation = targetRotation;
     }
 
