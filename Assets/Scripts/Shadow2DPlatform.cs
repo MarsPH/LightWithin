@@ -2,11 +2,12 @@ using UnityEngine;
 
 public class Shadow3DPlatform : MonoBehaviour
 {
-    public Light lightSource; // The light source (can be directional, point, or spot)
+    public Light lightSource; // The light source (Directional or Point Light)
     public GameObject shadowSurface; // Surface where the shadow will be projected
     public Material shadowMaterial; // Material for the shadow
     public string walkableLayer = "Water"; // Layer for walkable surfaces
     public float shadowOffset = 0.01f; // Small offset to prevent blending with the surface
+    public float maxShadowDistance = 10f; // Maximum distance for shadow projection
 
     private GameObject shadowObject; // GameObject for the shadow
     private Mesh shadowMesh; // Mesh for the shadow
@@ -84,34 +85,52 @@ public class Shadow3DPlatform : MonoBehaviour
         Vector3[] shadowVertices = new Vector3[originalVertices.Length];
         Matrix4x4 localToWorld = transform.localToWorldMatrix;
 
-        // Determine the light direction
-        Vector3 lightDirection;
-        if (lightSource.type == LightType.Directional)
-        {
-            // Correctly calculate the directional light's world space direction
-            lightDirection = lightSource.transform.forward.normalized;
-        }
-        else
-        {
-            // For point or spot lights, calculate the direction from the light's position
-            lightDirection = (transform.position - lightSource.transform.position).normalized;
-        }
-
-        // Project each vertex onto the shadow plane
-        Plane shadowPlane = new Plane(shadowSurface.transform.up, shadowSurface.transform.position);
         for (int i = 0; i < originalVertices.Length; i++)
         {
             Vector3 worldVertex = localToWorld.MultiplyPoint3x4(originalVertices[i]);
-            Ray projectionRay = new Ray(worldVertex, lightDirection);
 
-            if (shadowPlane.Raycast(projectionRay, out float distance))
+            if (lightSource.type == LightType.Directional)
             {
-                // Apply the shadow offset after projection
-                shadowVertices[i] = projectionRay.GetPoint(distance) + shadowSurface.transform.up * shadowOffset;
+                // Use the directional light's forward vector
+                Vector3 lightDirection = lightSource.transform.forward.normalized;
+
+                // Project the vertex outward along the light direction
+                Plane shadowPlane = new Plane(shadowSurface.transform.up, shadowSurface.transform.position);
+                Ray projectionRay = new Ray(worldVertex, lightDirection);
+
+                if (shadowPlane.Raycast(projectionRay, out float distance))
+                {
+                    shadowVertices[i] = projectionRay.GetPoint(distance) + shadowSurface.transform.up * shadowOffset;
+                }
+                else
+                {
+                    shadowVertices[i] = worldVertex;
+                }
+            }
+            else if (lightSource.type == LightType.Point)
+            {
+                // Calculate the direction from the light source to the vertex
+                Vector3 lightDirection = (worldVertex - lightSource.transform.position).normalized;
+
+                // Project the vertex outward along the light direction, limited by maxShadowDistance
+                Vector3 projectedVertex = lightSource.transform.position + lightDirection * maxShadowDistance;
+
+                // Project the vertex onto the shadow surface
+                Plane shadowPlane = new Plane(shadowSurface.transform.up, shadowSurface.transform.position);
+                Ray projectionRay = new Ray(worldVertex, lightDirection);
+
+                if (shadowPlane.Raycast(projectionRay, out float distance))
+                {
+                    shadowVertices[i] = projectionRay.GetPoint(distance) + shadowSurface.transform.up * shadowOffset;
+                }
+                else
+                {
+                    shadowVertices[i] = projectedVertex + shadowSurface.transform.up * shadowOffset;
+                }
             }
             else
             {
-                // Fallback to a default position if the projection fails
+                // Unsupported light type
                 shadowVertices[i] = worldVertex;
             }
         }

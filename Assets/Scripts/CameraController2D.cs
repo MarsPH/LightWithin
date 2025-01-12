@@ -4,7 +4,7 @@ using UnityEngine;
 
 public class CameraController2D : MonoBehaviour
 {
-   [Header("Target Settings")]
+    [Header("Target Settings")]
     public Transform player; // Player Transform
     public Vector2 offset; // Offset from the player's position
 
@@ -40,7 +40,7 @@ public class CameraController2D : MonoBehaviour
             targetPosition.x = Mathf.Clamp(playerPosition.x - offset.x, leftBound, rightBound);
         }
 
-        // Check if the player is near the top or bottom bounds
+        // Check if the player is near the bottom or top bounds (z-axis for vertical movement)
         if (playerPosition.z < transform.position.z - triggerDistance)
         {
             targetPosition.z = Mathf.Clamp(playerPosition.z + offset.y, bottomBound, topBound);

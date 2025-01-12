@@ -1,9 +1,8 @@
 using UnityEngine;
-using UnityEngine.Events;
 
 public class ShadowController : MonoBehaviour
 {
-     [Header("Movement Settings")]
+    [Header("Movement Settings")]
     public float moveSpeed = 5f;
     public float jumpForce = 10f;
 
@@ -24,11 +23,32 @@ public class ShadowController : MonoBehaviour
     public Transform rightSideCheck;
     public float sideCheckRadius = 0.2f;
 
+    [Header("Sound Effects")]
+    public AudioClip jumpSound;
+    public AudioClip walkSound;
+    public AudioClip fallSound;
+
     private Vector3 velocity;
     private bool isGrounded;
     private bool isTouchingCeiling;
     private bool isTouchingLeftSide;
     private bool isTouchingRightSide;
+
+    private Animator animator;
+    private AudioSource walkAudioSource;
+    private AudioSource effectAudioSource;
+    private bool wasGroundedLastFrame = true;
+
+    private void Start()
+    {
+        animator = GetComponent<Animator>();
+
+        // Assign the primary AudioSource for walking sound
+        walkAudioSource = GetComponent<AudioSource>();
+
+        // Create a separate AudioSource for effects like jumping
+        effectAudioSource = gameObject.AddComponent<AudioSource>();
+    }
 
     private void Update()
     {
@@ -38,6 +58,7 @@ public class ShadowController : MonoBehaviour
         Movement();
         Jump();
         ApplyGravity();
+        UpdateAnimatorParameters();
     }
 
     private void GroundCheck()
@@ -46,8 +67,7 @@ public class ShadowController : MonoBehaviour
 
         if (isGrounded)
         {
-            // Reset vertical velocity when grounded
-            velocity.y = 0f;
+            velocity.y = 0f; // Reset vertical velocity when grounded
         }
     }
 
@@ -57,8 +77,7 @@ public class ShadowController : MonoBehaviour
 
         if (isTouchingCeiling && velocity.y > 0)
         {
-            // Stop upward movement when hitting the ceiling
-            velocity.y = 0f;
+            velocity.y = 0f; // Stop upward movement when hitting the ceiling
         }
     }
 
@@ -91,6 +110,26 @@ public class ShadowController : MonoBehaviour
 
         // Apply movement
         Vector3 move = new Vector3(moveX, 0, moveZ).normalized;
+
+        if (move.magnitude > 0 && isGrounded)
+        {
+            if (!walkAudioSource.isPlaying)
+            {
+               //
+               // walkAudioSource.loop = true; // Ensure the sound loops
+               // walkAudioSource.clip = walkSound; // Set the walk sound clip
+               // walkAudioSource.Play(); // Start playing the sound
+            }
+        }
+        else
+        {
+            // Stop walking sound if movement stops or when not grounded
+            if (walkAudioSource.isPlaying)
+            {
+                walkAudioSource.Stop();
+            }
+        }
+
         transform.Translate(move * moveSpeed * Time.deltaTime, Space.World);
     }
 
@@ -98,49 +137,39 @@ public class ShadowController : MonoBehaviour
     {
         if (Input.GetButtonDown("Jump") && isGrounded)
         {
-            velocity.y = Mathf.Sqrt(jumpForce * -2f * gravity); // Calculate jump velocity
+            // Play the jump sound using the effects AudioSource
+            effectAudioSource.PlayOneShot(jumpSound);
+
+            // Calculate and apply the jump velocity
+            velocity.y = Mathf.Sqrt(jumpForce * -2f * gravity);
         }
     }
 
     private void ApplyGravity()
     {
-        if (!isGrounded) // Apply gravity when not grounded
+        if (!isGrounded)
         {
-            velocity.y += gravity * Time.deltaTime;
+            velocity.y += gravity * Time.deltaTime; // Apply gravity when not grounded
         }
 
         // Apply vertical velocity
         transform.Translate(new Vector3(0, velocity.y, 0) * Time.deltaTime);
     }
 
-    private void OnDrawGizmosSelected()
+    private void UpdateAnimatorParameters()
     {
-        // Ground Check Gizmo
-        if (groundCheck != null)
-        {
-            Gizmos.color = Color.green;
-            Gizmos.DrawWireSphere(groundCheck.position, groundCheckRadius);
-        }
+        animator.SetBool("isGrounded", isGrounded);
 
-        // Ceiling Check Gizmo
-        if (ceilingCheck != null)
-        {
-            Gizmos.color = Color.red;
-            Gizmos.DrawWireSphere(ceilingCheck.position, ceilingCheckRadius);
-        }
+        // Jumping logic
+        animator.SetBool("isJumping", !isGrounded && velocity.y > 0);
 
-        // Left Side Check Gizmo
-        if (leftSideCheck != null)
-        {
-            Gizmos.color = Color.blue;
-            Gizmos.DrawWireSphere(leftSideCheck.position, sideCheckRadius);
-        }
+        // Landing logic
+        animator.SetBool("isLanding", isGrounded && velocity.y <= 0);
 
-        // Right Side Check Gizmo
-        if (rightSideCheck != null)
-        {
-            Gizmos.color = Color.blue;
-            Gizmos.DrawWireSphere(rightSideCheck.position, sideCheckRadius);
-        }
+        // Walking logic
+        float moveZ = Input.GetAxis("Vertical");
+        float moveX = Input.GetAxis("Horizontal");
+        animator.SetBool("isWalking", moveX != 0 || moveZ != 0);
     }
 }
+
