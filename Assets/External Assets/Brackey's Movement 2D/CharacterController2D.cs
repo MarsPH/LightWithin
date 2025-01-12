@@ -1,179 +1,103 @@
 using UnityEngine;
 using UnityEngine.Events;
 
-public class ShadowWalkerController : MonoBehaviour
+public class CustomPhysicsController : MonoBehaviour
 {
-    [Header("Movement Settings")]
-    [SerializeField] private float moveSpeed = 5f; // Movement speed.
-    [SerializeField] private float jumpForce = 10f; // Jump force.
-    [SerializeField] private float gravity = 20f; // Gravity applied along the global Y-axis.
+   [Header("Movement Settings")]
+    public float moveSpeed = 5f;
+    public float jumpForce = 10f;
 
-    [Header("Layer Settings")]
-    [SerializeField] private LayerMask groundMask; // LayerMask for ground (e.g., water).
-    [SerializeField] private LayerMask shadowMask; // LayerMask for shadows.
+    [Header("Physics Settings")]
+    public float gravity = -9.81f;
+    public LayerMask groundLayer;
 
-    [Header("Check Settings")]
-    [SerializeField] private Transform checkPoint; // Transform to specify the check position.
-    [SerializeField] private float checkRadius = 0.2f; // Radius for both ground and shadow detection.
+    [Header("Ground Check Settings")]
+    public Transform groundCheck;
+    public float groundCheckRadius = 0.2f;
 
-    [Header("Shadow Settings")]
-    [SerializeField] private Material shadowMaterial; // Material for shadow mode.
-    [SerializeField] private Material normalMaterial; // Regular material.
+    [Header("Ceiling Check Settings")]
+    public Transform ceilingCheck;
+    public float ceilingCheckRadius = 0.2f;
 
-    [Header("Events")]
-    public UnityEvent OnLandEvent;
-    public UnityEvent OnEnterShadowEvent;
-    public UnityEvent OnExitShadowEvent;
-
-    private Vector3 velocity; // Custom velocity vector.
-    private bool isGrounded = false; // Is the character on the ground?
-    private bool isInShadow = false; // Is the character in a shadow?
-    private bool facingRight = true; // Character facing direction.
-    private bool shadowMode = false; // Is the character currently in shadow mode?
-
-    private void Awake()
-    {
-        if (OnLandEvent == null)
-            OnLandEvent = new UnityEvent();
-
-        if (OnEnterShadowEvent == null)
-            OnEnterShadowEvent = new UnityEvent();
-
-        if (OnExitShadowEvent == null)
-            OnExitShadowEvent = new UnityEvent();
-    }
+    private Vector3 velocity;
+    private bool isGrounded;
+    private bool isTouchingCeiling;
 
     private void Update()
     {
-        float moveX = Input.GetAxis("Horizontal");
-        bool jump = Input.GetKeyDown(KeyCode.Space);
-        bool enterShadow = Input.GetKeyDown(KeyCode.E); // Key to enter shadow mode.
+        GroundCheck();
+        CeilingCheck();
+        Movement();
+        Jump();
+        ApplyGravity();
+    }
 
-        if (enterShadow && isInShadow)
+    private void GroundCheck()
+    {
+        isGrounded = Physics.CheckSphere(groundCheck.position, groundCheckRadius, groundLayer);
+
+        if (isGrounded)
         {
-            ToggleShadowMode();
-        }
-        else if (!shadowMode)
-        {
-            Move(moveX, jump);
+            // Ensure the player doesn't keep moving downward when grounded
+            velocity.y = 0f;
         }
     }
 
-    private void FixedUpdate()
+    private void CeilingCheck()
     {
-        CheckEnvironment();
-        if (!shadowMode)
+        isTouchingCeiling = Physics.CheckSphere(ceilingCheck.position, ceilingCheckRadius, groundLayer);
+
+        if (isTouchingCeiling && velocity.y > 0)
         {
-            ApplyGravity();
-            ApplyVelocity();
+            // Stop upward movement if the ceiling is touched
+            velocity.y = 0f;
         }
     }
 
-    private void Move(float moveX, bool jump)
+    private void Movement()
     {
-        Vector3 moveDirection = transform.right * moveX;
-        velocity.x = moveDirection.x * moveSpeed;
+        float moveZ = Input.GetAxis("Vertical"); // Move along the Z-axis
+        float moveX = Input.GetAxis("Horizontal"); // Move along the X-axis
 
-        if (isGrounded && jump)
-        {
-            velocity.y = jumpForce;
-            isGrounded = false;
-        }
+        Vector3 move = new Vector3(moveX, 0, moveZ).normalized;
 
-        if (moveX > 0 && !facingRight)
+        if (move.magnitude >= 0.1f)
         {
-            Flip();
+            transform.Translate(move * moveSpeed * Time.deltaTime, Space.World);
         }
-        else if (moveX < 0 && facingRight)
+    }
+
+    private void Jump()
+    {
+        if (Input.GetButtonDown("Jump") && isGrounded)
         {
-            Flip();
+            velocity.y = Mathf.Sqrt(jumpForce * -2f * gravity);
         }
     }
 
     private void ApplyGravity()
     {
-        if (!isGrounded)
+        if (!isGrounded) // Only apply gravity when the player is not grounded
         {
-            velocity.y -= gravity * Time.fixedDeltaTime;
-        }
-    }
-
-    private void CheckEnvironment()
-    {
-        isGrounded = Physics.CheckSphere(checkPoint.position, checkRadius, groundMask);
-        isInShadow = Physics.CheckSphere(checkPoint.position, checkRadius, shadowMask);
-
-        if (isGrounded && !isInShadow)
-        {
-            velocity.y = 0f;
-            OnLandEvent.Invoke();
+            velocity.y += gravity * Time.deltaTime;
         }
 
-        // Debugging: Visualize checks
-        Debug.DrawRay(checkPoint.position, -transform.up * checkRadius, isGrounded ? Color.green : Color.red);
-        Debug.DrawRay(checkPoint.position, -transform.up * checkRadius, isInShadow ? Color.blue : Color.yellow);
-    }
-
-    private void ApplyVelocity()
-    {
-        transform.position += velocity * Time.fixedDeltaTime;
-    }
-
-    private void ToggleShadowMode()
-    {
-        shadowMode = !shadowMode;
-
-        if (shadowMode)
-        {
-            EnterShadowMode();
-        }
-        else
-        {
-            ExitShadowMode();
-        }
-    }
-
-    private void EnterShadowMode()
-    {
-        velocity = Vector3.zero; // Stop all movement.
-        SetShadowAppearance(true);
-        OnEnterShadowEvent.Invoke();
-        Debug.Log("Entered shadow mode.");
-    }
-
-    private void ExitShadowMode()
-    {
-        SetShadowAppearance(false);
-        OnExitShadowEvent.Invoke();
-        Debug.Log("Exited shadow mode.");
-    }
-
-    private void SetShadowAppearance(bool isShadowMode)
-    {
-        Renderer renderer = GetComponent<Renderer>();
-        if (renderer != null)
-        {
-            renderer.material = isShadowMode ? shadowMaterial : normalMaterial;
-        }
-    }
-
-    private void Flip()
-    {
-        facingRight = !facingRight;
-        Vector3 scale = transform.localScale;
-        scale.x *= -1;
-        transform.localScale = scale;
+        // Apply the vertical velocity
+        transform.Translate(new Vector3(0, velocity.y, 0) * Time.deltaTime);
     }
 
     private void OnDrawGizmosSelected()
     {
-        if (checkPoint != null)
+        if (groundCheck != null)
         {
-            Gizmos.color = isGrounded ? Color.green : Color.red;
-            Gizmos.DrawWireSphere(checkPoint.position, checkRadius);
+            Gizmos.color = Color.green;
+            Gizmos.DrawWireSphere(groundCheck.position, groundCheckRadius);
+        }
 
-            Gizmos.color = isInShadow ? Color.blue : Color.yellow;
-            Gizmos.DrawWireSphere(checkPoint.position, checkRadius);
+        if (ceilingCheck != null)
+        {
+            Gizmos.color = Color.red;
+            Gizmos.DrawWireSphere(ceilingCheck.position, ceilingCheckRadius);
         }
     }
 }

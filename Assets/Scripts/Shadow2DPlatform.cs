@@ -6,6 +6,7 @@ public class Shadow3DPlatform : MonoBehaviour
     public GameObject shadowSurface; // Surface where the shadow will be projected
     public Material shadowMaterial; // Material for the shadow
     public string walkableLayer = "Water"; // Layer for walkable surfaces
+    public float shadowOffset = 0.01f; // Small offset to prevent blending with the surface
 
     private GameObject shadowObject; // GameObject for the shadow
     private Mesh shadowMesh; // Mesh for the shadow
@@ -105,7 +106,8 @@ public class Shadow3DPlatform : MonoBehaviour
 
             if (shadowPlane.Raycast(projectionRay, out float distance))
             {
-                shadowVertices[i] = projectionRay.GetPoint(distance);
+                // Apply the shadow offset after projection
+                shadowVertices[i] = projectionRay.GetPoint(distance) + shadowSurface.transform.up * shadowOffset;
             }
             else
             {
