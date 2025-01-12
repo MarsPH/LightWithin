@@ -1,97 +1,82 @@
 using UnityEngine;
 using UnityEngine.Events;
 
-public class CustomPhysicsController : MonoBehaviour
+public class ShadowWalkerController : MonoBehaviour
 {
     [Header("Movement Settings")]
     [SerializeField] private float moveSpeed = 5f; // Movement speed.
     [SerializeField] private float jumpForce = 10f; // Jump force.
     [SerializeField] private float gravity = 20f; // Gravity applied along the global Y-axis.
 
-    [Header("Ground Check")]
-    [SerializeField] private Transform groundCheckPoint; // Transform to specify the ground check position.
-    [SerializeField] private float groundCheckRadius = 0.2f; // Radius for ground detection.
-    [SerializeField] private LayerMask groundMask; // LayerMask to identify ground objects.
+    [Header("Layer Settings")]
+    [SerializeField] private LayerMask groundMask; // LayerMask for ground (e.g., water).
+    [SerializeField] private LayerMask shadowMask; // LayerMask for shadows.
 
-    [Header("Crouching")]
-    [SerializeField] private float crouchSpeedMultiplier = 0.5f; // Speed multiplier when crouching.
-    [SerializeField] private Collider crouchCollider; // Collider to disable when crouching.
+    [Header("Check Settings")]
+    [SerializeField] private Transform checkPoint; // Transform to specify the check position.
+    [SerializeField] private float checkRadius = 0.2f; // Radius for both ground and shadow detection.
 
-    private Vector3 velocity; // Custom velocity vector.
-    private bool isGrounded; // Is the character grounded?
-    private bool facingRight = true; // Character facing direction.
-    private bool isCrouching = false;
+    [Header("Shadow Settings")]
+    [SerializeField] private Material shadowMaterial; // Material for shadow mode.
+    [SerializeField] private Material normalMaterial; // Regular material.
 
     [Header("Events")]
     public UnityEvent OnLandEvent;
-    public UnityEvent<bool> OnCrouchEvent;
+    public UnityEvent OnEnterShadowEvent;
+    public UnityEvent OnExitShadowEvent;
+
+    private Vector3 velocity; // Custom velocity vector.
+    private bool isGrounded = false; // Is the character on the ground?
+    private bool isInShadow = false; // Is the character in a shadow?
+    private bool facingRight = true; // Character facing direction.
+    private bool shadowMode = false; // Is the character currently in shadow mode?
 
     private void Awake()
     {
         if (OnLandEvent == null)
             OnLandEvent = new UnityEvent();
 
-        if (OnCrouchEvent == null)
-            OnCrouchEvent = new UnityEvent<bool>();
+        if (OnEnterShadowEvent == null)
+            OnEnterShadowEvent = new UnityEvent();
+
+        if (OnExitShadowEvent == null)
+            OnExitShadowEvent = new UnityEvent();
     }
 
     private void Update()
     {
         float moveX = Input.GetAxis("Horizontal");
         bool jump = Input.GetKeyDown(KeyCode.Space);
-        bool crouch = Input.GetKey(KeyCode.LeftControl);
+        bool enterShadow = Input.GetKeyDown(KeyCode.E); // Key to enter shadow mode.
 
-        Move(moveX, crouch, jump);
+        if (enterShadow && isInShadow)
+        {
+            ToggleShadowMode();
+        }
+        else if (!shadowMode)
+        {
+            Move(moveX, jump);
+        }
     }
 
     private void FixedUpdate()
     {
-        CheckGroundStatus();
-        ApplyGravity();
-        ApplyVelocity();
+        CheckEnvironment();
+        if (!shadowMode)
+        {
+            ApplyGravity();
+            ApplyVelocity();
+        }
     }
 
-    public void Move(float moveX, bool crouch, bool jump)
+    private void Move(float moveX, bool jump)
     {
-        if (!crouch && isCrouching)
-        {
-            if (Physics.Raycast(transform.position, transform.up, 0.1f, groundMask))
-            {
-                crouch = true;
-            }
-        }
-
-        if (crouch)
-        {
-            if (!isCrouching)
-            {
-                isCrouching = true;
-                OnCrouchEvent.Invoke(true);
-            }
-
-            moveX *= crouchSpeedMultiplier;
-
-            if (crouchCollider != null)
-                crouchCollider.enabled = false;
-        }
-        else
-        {
-            if (isCrouching)
-            {
-                isCrouching = false;
-                OnCrouchEvent.Invoke(false);
-            }
-
-            if (crouchCollider != null)
-                crouchCollider.enabled = true;
-        }
-
         Vector3 moveDirection = transform.right * moveX;
         velocity.x = moveDirection.x * moveSpeed;
 
         if (isGrounded && jump)
         {
-            velocity.y = jumpForce; // Apply jump force along the global Y-axis
+            velocity.y = jumpForce;
             isGrounded = false;
         }
 
@@ -109,30 +94,67 @@ public class CustomPhysicsController : MonoBehaviour
     {
         if (!isGrounded)
         {
-            // Apply gravity along the global Y-axis
             velocity.y -= gravity * Time.fixedDeltaTime;
         }
     }
 
-    private void CheckGroundStatus()
+    private void CheckEnvironment()
     {
-        // Use Physics.CheckSphere to check if the character is on the ground
-        isGrounded = Physics.CheckSphere(groundCheckPoint.position, groundCheckRadius, groundMask);
+        isGrounded = Physics.CheckSphere(checkPoint.position, checkRadius, groundMask);
+        isInShadow = Physics.CheckSphere(checkPoint.position, checkRadius, shadowMask);
 
-        if (isGrounded)
+        if (isGrounded && !isInShadow)
         {
-            velocity.y = 0f; // Reset vertical velocity when grounded
+            velocity.y = 0f;
             OnLandEvent.Invoke();
         }
 
-        // Debugging: Visualize the ground check sphere
-        Debug.DrawRay(groundCheckPoint.position, -transform.up * groundCheckRadius, isGrounded ? Color.green : Color.red);
+        // Debugging: Visualize checks
+        Debug.DrawRay(checkPoint.position, -transform.up * checkRadius, isGrounded ? Color.green : Color.red);
+        Debug.DrawRay(checkPoint.position, -transform.up * checkRadius, isInShadow ? Color.blue : Color.yellow);
     }
 
     private void ApplyVelocity()
     {
-        // Apply velocity to the position
         transform.position += velocity * Time.fixedDeltaTime;
+    }
+
+    private void ToggleShadowMode()
+    {
+        shadowMode = !shadowMode;
+
+        if (shadowMode)
+        {
+            EnterShadowMode();
+        }
+        else
+        {
+            ExitShadowMode();
+        }
+    }
+
+    private void EnterShadowMode()
+    {
+        velocity = Vector3.zero; // Stop all movement.
+        SetShadowAppearance(true);
+        OnEnterShadowEvent.Invoke();
+        Debug.Log("Entered shadow mode.");
+    }
+
+    private void ExitShadowMode()
+    {
+        SetShadowAppearance(false);
+        OnExitShadowEvent.Invoke();
+        Debug.Log("Exited shadow mode.");
+    }
+
+    private void SetShadowAppearance(bool isShadowMode)
+    {
+        Renderer renderer = GetComponent<Renderer>();
+        if (renderer != null)
+        {
+            renderer.material = isShadowMode ? shadowMaterial : normalMaterial;
+        }
     }
 
     private void Flip()
@@ -145,11 +167,13 @@ public class CustomPhysicsController : MonoBehaviour
 
     private void OnDrawGizmosSelected()
     {
-        // Visualize the ground check sphere in the editor
-        if (groundCheckPoint != null)
+        if (checkPoint != null)
         {
             Gizmos.color = isGrounded ? Color.green : Color.red;
-            Gizmos.DrawWireSphere(groundCheckPoint.position, groundCheckRadius);
+            Gizmos.DrawWireSphere(checkPoint.position, checkRadius);
+
+            Gizmos.color = isInShadow ? Color.blue : Color.yellow;
+            Gizmos.DrawWireSphere(checkPoint.position, checkRadius);
         }
     }
 }
